@@ -1,0 +1,70 @@
+<!doctype html>
+function render(){
+tok.textContent = Math.floor(STATE.tokens).toLocaleString();
+lvl.textContent = STATE.level;
+tap.textContent = STATE.tap_power;
+regen.textContent = Number(STATE.regen_per_sec).toFixed(1);
+const pct = Math.max(0, Math.min(1, Number(STATE.energy)/STATE.cap));
+eFill.style.width = (pct*100).toFixed(1)+'%';
+eTxt.textContent = Math.floor(STATE.energy)+' / '+STATE.cap;
+}
+
+
+btnTap.addEventListener('click', async ()=>{
+const r = await API('/api/tap', { method:'POST', headers:{ 'Content-Type':'application/json','x-telegram-init': (window.Telegram?.WebApp?.initData||'') }, body: JSON.stringify({ taps:1 }) });
+if(r.ok){ STATE = r.state; render(); }
+else showToast(r.error || 'No energy');
+});
+
+
+$('#btnShop').addEventListener('click', ()=> $('#dlgShop').showModal());
+$('#dlgShop').addEventListener('click', async (e)=>{
+if(e.target.matches('[data-close]')) return e.currentTarget.close();
+const k = e.target.getAttribute('data-buy'); if(!k) return;
+const r = await API('/api/buy', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ kind:k }) });
+if(r.ok){ STATE = r.state; render(); showToast('Purchased '+k); }
+else showToast(r.error || 'Purchase failed');
+});
+
+
+$('#btnDaily').addEventListener('click', async ()=>{
+const r = await API('/api/daily', { method:'POST' });
+if(r.ok){ STATE = r.state; render(); showToast('Daily +'+r.reward); }
+else showToast(r.error || 'Daily error');
+});
+
+
+$('#btnCity').addEventListener('click', ()=> $('#dlgCity').showModal());
+$('#dlgCity').addEventListener('click', async (e)=>{
+if(e.target.matches('[data-close]')) return e.currentTarget.close();
+const b = e.target.getAttribute('data-build'); if(!b) return;
+const r = await API('/api/build', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ building:b }) });
+if(r.ok){ STATE = r.state; render(); renderCity(r.state.city); showToast('Built '+b); }
+else showToast(r.error || 'Build failed');
+});
+
+
+function renderCity(city){
+const box = $('#cityList'); box.innerHTML='';
+if(!city || !city.buildings?.length){ box.innerHTML = '<div class="panel">No buildings yet</div>'; return; }
+city.buildings.slice().reverse().forEach(b=>{
+const d = document.createElement('div');
+d.className='panel';
+d.textContent = `${b.type} @ ${new Date(b.at).toLocaleString()}`;
+box.appendChild(d);
+});
+}
+
+
+// Telegram WebApp setup
+if(window.Telegram && Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+
+
+// Set your backend base URL when hosted
+// window.API_BASE = 'https://your-server.example.com';
+
+
+load();
+</script>
+</body>
+</html>
