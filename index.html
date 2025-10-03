@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>RicoBet Mascot Clicker</title>
+<meta name="theme-color" content="#0b0f1b" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+
+<!-- Preload key images (replace mascot and banner as needed) -->
+<link rel="preload" as="image" href="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png">
+<link rel="preload" as="image" href="https://images.unsplash.com/photo-1535905748047-14b851c8d1b3?q=80&w=1200&auto=format&fit=crop"> <!-- default banner placeholder -->
+
+<style>
+  :root{
+    --ink:#eaf2ff; --muted:#a9b7d8; --accent:#71e1ff; --accent2:#ff6ec4; --gold:#ffd86a;
+    --ok:#aef7c1; --danger:#ff9fa8;
+    --card:#101528; --card2:#0c1122; --ring:#24314f;
+    --day0:#a0d8ff; --day1:#f7fbff; --night0:#070b18; --night1:#0b0f1b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Outfit,system-ui,Segoe UI,Roboto,Arial,sans-serif; color:var(--ink);
+    background:radial-gradient(1200px 700px at 70% -10%, var(--day0), var(--day1));
+    transition:background .6s ease;
+  }
+  body.night{background:radial-gradient(1200px 700px at 70% -10%, var(--night0), var(--night1))}
+
+  /* Loader */
+  #loader{position:fixed; inset:0; display:grid; place-items:center; background:linear-gradient(180deg, rgba(12,17,34,.96), rgba(7,11,24,.96)); z-index:50}
+  .loader-card{width:min(680px,94%); background:var(--card); border:1px solid var(--ring); border-radius:20px; padding:16px; overflow:hidden; box-shadow:0 20px 70px rgba(0,0,0,.45)}
+  .banner{width:100%; aspect-ratio:16/9; background:#111; border-radius:14px; overflow:hidden; display:block}
+  .banner img{width:100%; height:100%; object-fit:cover; display:block}
+  .progress{margin-top:12px; height:14px; border:1px solid var(--ring); border-radius:999px; background:linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.02))}
+  .bar{height:100%; width:0%; background:linear-gradient(90deg, var(--accent), var(--accent2)); border-radius:999px; transition:width .2s ease}
+  .loader-title{margin:10px 6px 0; font-weight:700; letter-spacing:.3px}
+
+  /* Header */
+  header{position:sticky; top:0; z-index:4; background:rgba(10,14,28,.6); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,.08)}
+  .wrap{max-width:1060px; margin:0 auto; padding:14px 16px; display:flex; align-items:center; gap:12px}
+  .logo{display:flex; align-items:center; gap:10px; font-weight:800}
+  .logo img{width:28px; height:28px}
+  .pill{margin-left:auto; display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--ring); border-radius:999px; background:linear-gradient(180deg, var(--card), var(--card2))}
+  .pill b{font-size:14px}
+
+  /* HUD */
+  .hud{max-width:1060px; margin:18px auto 0; padding:0 16px; display:grid; grid-template-columns:1fr; gap:14px}
+  .panel{background:linear-gradient(180deg, var(--card), var(--card2)); border:1px solid var(--ring); border-radius:18px; padding:14px}
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .kv{display:flex; align-items:center; gap:10px}
+  .kv .k{font-size:14px; color:var(--muted)}
+  .kv .v{font-weight:800}
+
+  .energy{position:relative; height:18px; border:1px solid var(--ring); border-radius:999px; overflow:hidden; background:rgba(255,255,255,.06)}
+  .energy .fill{position:absolute; inset:0; width:0%; background:linear-gradient(90deg, #7ef2ff, #78f3ff, #9aa8ff); box-shadow:0 0 14px rgba(120,243,255,.5) inset}
+  .energy .txt{position:absolute; inset:0; display:grid; place-items:center; font-size:12px; color:#06101a; font-weight:800; text-shadow:0 1px 0 rgba(255,255,255,.4)}
+
+  /* Stage */
+  .stage{max-width:1060px; margin:8px auto; padding:0 16px 100px}
+  .board{position:relative; height:54vh; min-height:420px; border:1px solid var(--ring); border-radius:22px; overflow:hidden; 
+    background:radial-gradient(1000px 500px at 70% -20%, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  }
+  .parallax{position:absolute; inset:0; pointer-events:none}
+  .sky{position:absolute; inset:0; background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.0))}
+  .stars{position:absolute; inset:0; opacity:.0; transition:opacity .6s ease}
+  body.night .stars{opacity:.35; background:radial-gradient(1px 1px at 10% 20%, #fff 99%, transparent),
+                                  radial-gradient(1px 1px at 30% 80%, #fff 99%, transparent),
+                                  radial-gradient(1.4px 1.4px at 70% 30%, #fff 99%, transparent),
+                                  radial-gradient(1px 1px at 90% 60%, #fff 99%, transparent)}
+
+  .ground{position:absolute; left:0; right:0; bottom:0; height:38%; background:linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.22))}
+  .city{position:absolute; left:0; right:0; bottom:30%; height:38%; opacity:.3; filter:blur(.2px)}
+  .city:before,.city:after{content:""; position:absolute; inset:0; background:
+      linear-gradient(90deg, rgba(255,255,255,.08) 2px, transparent 2px) 0 0/80px 100%,
+      linear-gradient(180deg, rgba(255,255,255,.05) 2px, transparent 2px) 0 0/100% 50px;
+    mask:linear-gradient(180deg, #000 65%, transparent);
+  }
+
+  /* Mascot */
+  .mascot{position:absolute; left:50%; bottom:14%; transform:translateX(-50%); width:min(42vmin, 320px); aspect-ratio:1/1; display:grid; place-items:center; cursor:pointer}
+  .mascot .body{position:relative; width:100%; height:100%; border-radius:26px; display:grid; place-items:center; 
+    background:radial-gradient(120% 120% at 30% 10%, rgba(255,255,255,.15), rgba(255,255,255,.04));
+    border:1px solid var(--ring); box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .mascot img{max-width:76%; user-select:none; -webkit-user-drag:none; filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+  .shirt{position:absolute; inset:auto 10% 14% 10%; height:24%; border-radius:14px; background:linear-gradient(180deg, #ff6ec4, #7873f5);
+    border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 18px rgba(120,115,245,.35); transition:filter .2s ease}
+  .shirt.pattern-1{background:linear-gradient(135deg, #ff9a9e, #fad0c4)}
+  .shirt.pattern-2{background:linear-gradient(135deg, #a18cd1, #fbc2eb)}
+  .shirt.pattern-3{background:linear-gradient(135deg, #f6d365, #fda085)}
+  .shirt.pattern-4{background:linear-gradient(135deg, #84fab0, #8fd3f4)}
+
+  .tapFx{position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); font-weight:800; font-size:20px; pointer-events:none; opacity:0}
+  .tapFx.show{animation:pop .7s ease forwards}
+  @keyframes pop{0%{opacity:0; transform:translate(-50%,-50%) scale(.6)} 20%{opacity:1; transform:translate(-50%,-54%) scale(1)} 100%{opacity:0; transform:translate(-50%,-80%) scale(.9)}}
+  .mascot:active{transform:translateX(-50%) translateY(1px)}
+
+  /* Controls */
+  .dock{position:fixed; left:0; right:0; bottom:0; z-index:3; background:linear-gradient(180deg, rgba(8,12,24,.0), rgba(8,12,24,.8)); padding:16px}
+  .grid{max-width:1060px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .btn{display:flex; align-items:center; justify-content:center; gap:8px; padding:14px 14px; border-radius:14px; border:1px solid var(--ring); font-weight:800; cursor:pointer; text-decoration:none; color:var(--ink); background:linear-gradient(180deg, var(--card), var(--card2));}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:linear-gradient(90deg, #71e1ff, #78f3ff, #9aa8ff); color:#06101a; text-shadow:0 1px 0 rgba(255,255,255,.5)}
+
+  /* Shop & Settings */
+  dialog{border:none; padding:0; border-radius:18px; background:linear-gradient(180deg, var(--card), var(--card2)); color:var(--ink); width:min(720px,94%);} 
+  dialog::backdrop{background:rgba(0,0,0,.55)}
+  .dlg{padding:16px}
+  .dlg h3{margin:0 0 8px}
+  .shop{display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px}
+  .item{border:1px solid var(--ring); border-radius:14px; padding:12px; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))}
+  .item .price{display:flex; align-items:center; gap:8px; font-weight:800}
+  .small{color:var(--muted); font-size:12px}
+  .actions{display:flex; gap:10px; justify-content:flex-end; margin-top:10px}
+
+  /* Token chip */
+  .chip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--ring); border-radius:999px; background:linear-gradient(180deg, var(--card), var(--card2));}
+  .chip img{width:18px; height:18px}
+
+  /* Audio toggle */
+  .sound{display:flex; align-items:center; gap:8px; cursor:pointer}
+</style>
+</head>
+<body>
+  <!-- Loader with banner -->
+  <div id="loader">
+    <div class="loader-card">
+      <a class="banner" href="#" tabindex="-1">
+        <img id="bannerImg" alt="Loading banner" src="https://ricomx.ft-crm.com/media-api/serve/61dd8859-04e9-4e56-9bb5-3e4932bfd35d_VIP_Club_MX.png"/>
+      </a>
+      <div class="progress"><div class="bar" id="bar"></div></div>
+      <div class="loader-title">Launching RicoBet Mascot… <span id="pct">0%</span></div>
+    </div>
+  </div>
+
+  <header>
+    <div class="wrap">
+      <div class="logo"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" alt="R"/> RicoBet Clicker</div>
+      <div class="pill">
+        <span class="chip"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" alt="R"/><b id="tok">0</b></span>
+        <span class="kv"><span class="k">Lvl</span> <span class="v" id="lvl">1</span></span>
+        <span class="sound" id="soundToggle" title="Enable/Disable sound"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10v4h4l5 4V6l-5 4H3z" fill="currentColor"/></svg><span class="small" id="sndTxt">Sound off</span></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hud">
+    <div class="panel">
+      <div class="stats">
+        <div class="kv"><span class="k">Tap Power</span> <span class="v" id="tap">1</span></div>
+        <div class="kv"><span class="k">Regen/sec</span> <span class="v" id="regen">1</span></div>
+      </div>
+      <div class="energy" aria-label="Energy">
+        <div class="fill" id="eFill"></div>
+        <div class="txt" id="eTxt">0 / 500</div>
+      </div>
+    </div>
+  </div>
+
+  <main class="stage">
+    <div class="board" id="board">
+      <div class="parallax sky"></div>
+      <div class="parallax stars"></div>
+      <div class="parallax city"></div>
+      <div class="parallax ground"></div>
+
+      <div class="mascot" id="mascot">
+        <div class="body">
+          <!-- Replace mascot image with your own -->
+          <img id="mascotImg" src="https://ricomx.ft-crm.com/media-api/serve/a3e8f9f5-851f-4048-b1ff-e7255de54266_14.png" alt="Mascot"/>
+          <div id="shirt" class="shirt pattern-2"></div>
+          <div class="tapFx" id="tapFx">+1</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="dock">
+    <div class="grid">
+      <a class="btn primary" id="btnShop">🛍️ Upgrade & Skins</a>
+      <a class="btn" id="btnSettings">⚙️ Settings</a>
+    </div>
+  </div>
+
+  <!-- Shop Dialog -->
+  <dialog id="dlgShop">
+    <div class="dlg">
+      <h3>Upgrade & Skins</h3>
+      <div class="shop">
+        <div class="item">
+          <div><b>Tap Power +1</b><div class="small">Increase tokens earned per tap.</div></div>
+          <div class="actions"><span class="price"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" width="16" height="16"/>50</span>
+            <button class="btn" data-buy="tap">Buy</button></div>
+        </div>
+        <div class="item">
+          <div><b>Energy Max +50</b><div class="small">Raise cap to tap longer.</div></div>
+          <div class="actions"><span class="price"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" width="16" height="16"/>80</span>
+            <button class="btn" data-buy="cap">Buy</button></div>
+        </div>
+        <div class="item">
+          <div><b>Regen +0.5/sec</b><div class="small">Faster energy recovery.</div></div>
+          <div class="actions"><span class="price"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" width="16" height="16"/>120</span>
+            <button class="btn" data-buy="regen">Buy</button></div>
+        </div>
+        <div class="item">
+          <div><b>Shirt Skin</b> <div class="small">Rotate through premium patterns.</div></div>
+          <div class="actions"><span class="price"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" width="16" height="16"/>30</span>
+            <button class="btn" data-buy="shirt">Buy</button></div>
+        </div>
+        <div class="item">
+          <div><b>Background Theme</b> <div class="small">Unlock extra day/night palettes.</div></div>
+          <div class="actions"><span class="price"><img src="https://ricobr.ft-crm.com/media-api/serve/31f4b97e-ea10-4991-91b2-4e2ebe31594d_Token.png" width="16" height="16"/>60</span>
+            <button class="btn" data-buy="bg">Buy</button></div>
+        </div>
+      </div>
+      <div class="actions"><button class="btn" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <!-- Settings Dialog -->
+  <dialog id="dlgSettings">
+    <div class="dlg">
+      <h3>Settings</h3>
+      <div class="shop">
+        <div class="item">
+          <div><b>Banner URL</b> <div class="small">Image shown during loading.</div></div>
+          <input id="inBanner" class="btn" style="width:100%" placeholder="https://... .jpg"/>
+          <div class="actions"><button class="btn" id="saveBanner">Save</button></div>
+        </div>
+        <div class="item">
+          <div><b>Time Theme</b> <div class="small">Use UTC to auto day/night. Toggle for testing.</div></div>
+          <div class="actions"><button class="btn" id="forceDay">Day</button><button class="btn" id="forceNight">Night</button><button class="btn" id="autoTime">Auto (UTC)</button></div>
+        </div>
+        <div class="item">
+          <div><b>Reset Progress</b> <div class="small">Clear local save (dev only).</div></div>
+          <div class="actions"><button class="btn" id="reset">Reset</button></div>
+        </div>
+      </div>
+      <div class="actions"><button class="btn" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <!-- Audio -->
+  <audio id="sClick" preload="auto">
+    <source src="https://cdn.jsdelivr.net/gh/jshawl/audio-examples/button-20.mp3" type="audio/mpeg" />
+  </audio>
+  <audio id="sBuy" preload="auto">
+    <source src="https://cdn.jsdelivr.net/gh/jshawl/audio-examples/coin-1.mp3" type="audio/mpeg" />
+  </audio>
+
+<script>
+(function(){
+  const $ = sel => document.querySelector(sel);
+  const tokEl = $('#tok');
+  const lvlEl = $('#lvl');
+  const tapEl = $('#tap');
+  const regenEl = $('#regen');
+  const eFill = $('#eFill');
+  const eTxt = $('#eTxt');
+  const tapFx = $('#tapFx');
+  const mascot = $('#mascot');
+  const shirt = $('#shirt');
+  const snd = { click: $('#sClick'), buy: $('#sBuy'), enabled: false };
+  const sndToggle = $('#soundToggle');
+  const sndTxt = $('#sndTxt');
+
+  // --- Persistent State ---
+  const LS = 'ricobet_clicker_v1';
+  const now = () => Date.now();
+  const base = { tokens:0, level:1, tapPower:1, energy:0, cap:500, regenPerSec:1, last: now(), shirtIdx:2, theme:'auto', banner:'' };
+  let S = Object.assign({}, base, JSON.parse(localStorage.getItem(LS)||'{}'));
+
+  // --- Loader ---
+  const loader = $('#loader');
+  const bar = $('#bar');
+  const pct = $('#pct');
+  const bannerImg = $('#bannerImg');
+  if(S.banner) bannerImg.src = S.banner;
+  let p=0; const fakeLoad = setInterval(()=>{ p=Math.min(100, p+Math.random()*14); bar.style.width=p+'%'; pct.textContent = Math.round(p)+'%'; if(p>=100){ clearInterval(fakeLoad); setTimeout(()=> loader.style.display='none', 300); }}, 180);
+
+  // --- Time-based theme (UTC) ---
+  function applyTheme(){
+    const t = S.theme;
+    if(t==='day'){ document.body.classList.remove('night'); return; }
+    if(t==='night'){ document.body.classList.add('night'); return; }
+    const h = new Date().getUTCHours();
+    const isNight = h < 6 || h >= 18; // 06:00–18:00 = day
+    document.body.classList.toggle('night', isNight);
+  }
+  applyTheme();
+
+  // --- Audio gating ---
+  function enableSound(){ snd.enabled = true; sndTxt.textContent = 'Sound on'; }
+  function disableSound(){ snd.enabled = false; sndTxt.textContent = 'Sound off'; }
+  sndToggle.addEventListener('click', ()=>{ snd.enabled ? disableSound() : enableSound(); });
+  // First interaction enables sound
+  window.addEventListener('pointerdown', ()=>{ if(!snd.enabled){ enableSound(); } }, {once:true});
+
+  // --- Energy regen ---
+  function regen(){
+    const t = now();
+    const dt = (t - S.last)/1000; // seconds
+    S.last = t;
+    if(S.energy < S.cap){
+      S.energy = Math.min(S.cap, S.energy + S.regenPerSec * dt);
+    }
+    renderHUD();
+  }
+  setInterval(regen, 1000);
+
+  // --- Render HUD ---
+  function renderHUD(){
+    tokEl.textContent = Math.floor(S.tokens).toLocaleString();
+    lvlEl.textContent = S.level;
+    tapEl.textContent = S.tapPower.toFixed(0);
+    regenEl.textContent = S.regenPerSec.toFixed(1);
+    const pct = Math.max(0, Math.min(1, S.energy / S.cap));
+    eFill.style.width = (pct*100).toFixed(1)+'%';
+    eTxt.textContent = `${Math.floor(S.energy)} / ${S.cap}`;
+    localStorage.setItem(LS, JSON.stringify(S));
+  }
+
+  // --- Leveling (simple: every 500 tokens) ---
+  function checkLevel(){
+    const target = S.level * 500;
+    if(S.tokens >= target){ S.level++; flashText(`Level Up! ➜ ${S.level}`, '#aef7c1'); }
+  }
+
+  // --- Tap handler ---
+  mascot.addEventListener('click', ()=>{
+    if(S.energy < 1) { flashText('No energy', '#ff9fa8'); return; }
+    S.energy -= 1; // cost per tap
+    const gain = S.tapPower;
+    S.tokens += gain;
+    if(snd.enabled){ try{ snd.click.currentTime=0; snd.click.play(); }catch(e){} }
+    showTapFx(`+${gain}`);
+    checkLevel();
+    renderHUD();
+  });
+
+  function showTapFx(text){
+    tapFx.textContent = text; tapFx.classList.remove('show'); void tapFx.offsetWidth; tapFx.classList.add('show');
+  }
+
+  function flashText(msg, color){
+    const el = document.createElement('div');
+    el.className='tapFx show'; el.style.left='50%'; el.style.top='22%'; el.style.color=color; el.textContent=msg;
+    $('#board').appendChild(el); setTimeout(()=> el.remove(), 900);
+  }
+
+  // --- Shop ---
+  const dlgShop = $('#dlgShop');
+  $('#btnShop').addEventListener('click', ()=> dlgShop.showModal());
+  dlgShop.addEventListener('click', (e)=>{ if(e.target.matches('[data-close]')) dlgShop.close(); });
+  dlgShop.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-buy]'); if(!btn) return;
+    const kind = btn.getAttribute('data-buy');
+    const cost = { tap:50, cap:80, regen:120, shirt:30, bg:60 }[kind];
+    if(S.tokens < cost){ flashText('Not enough tokens', '#ff9fa8'); return; }
+    S.tokens -= cost;
+    if(kind==='tap') S.tapPower += 1;
+    if(kind==='cap') S.cap += 50;
+    if(kind==='regen') S.regenPerSec = Math.min(10, S.regenPerSec + 0.5);
+    if(kind==='shirt'){ S.shirtIdx=(S.shirtIdx+1)%5; applyShirt(); }
+    if(kind==='bg'){ cycleThemePalette(); }
+    if(snd.enabled){ try{ snd.buy.currentTime=0; snd.buy.play(); }catch(e){} }
+    renderHUD();
+  });
+
+  function applyShirt(){
+    const idx = S.shirtIdx;
+    shirt.className = 'shirt ' + (idx===0?'':`pattern-${(idx%4)||4}`);
+  }
+  applyShirt();
+
+  // --- Settings ---
+  const dlgSettings = $('#dlgSettings');
+  $('#btnSettings').addEventListener('click', ()=>{ $('#inBanner').value = S.banner || ''; dlgSettings.showModal(); });
+  dlgSettings.addEventListener('click', (e)=>{ if(e.target.matches('[data-close]')) dlgSettings.close(); });
+  $('#saveBanner').addEventListener('click', ()=>{ const v=$('#inBanner').value.trim(); S.banner=v; bannerImg.src = v||bannerImg.src; localStorage.setItem(LS, JSON.stringify(S)); flashText('Banner saved', '#aef7c1'); });
+  $('#reset').addEventListener('click', ()=>{ localStorage.removeItem(LS); Object.assign(S, base, {last:now()}); renderHUD(); flashText('Progress reset', '#aef7c1'); });
+  $('#forceDay').addEventListener('click', ()=>{ S.theme='day'; applyTheme(); });
+  $('#forceNight').addEventListener('click', ()=>{ S.theme='night'; applyTheme(); });
+  $('#autoTime').addEventListener('click', ()=>{ S.theme='auto'; applyTheme(); });
+
+  function cycleThemePalette(){
+    // Placeholder: you can expand to rotate multiple background art packs
+    const t = ['day','night','auto'];
+    const i = (t.indexOf(S.theme)+1) % t.length; S.theme = t[i]; applyTheme();
+    flashText('Theme: '+S.theme, '#aef7c1');
+  }
+
+  // --- Telegram WebApp hooks (optional) ---
+  // If opened inside Telegram, we can expand and later send scores.
+  if(window.Telegram && Telegram.WebApp){
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+    // Example: send score when closing (replace with your bot logic)
+    window.addEventListener('beforeunload', ()=>{
+      // You would POST S.tokens to your backend to call setGameScore
+    });
+  }
+
+  // Kick things off
+  renderHUD();
+})();
+</script>
+</body>
+</html>
