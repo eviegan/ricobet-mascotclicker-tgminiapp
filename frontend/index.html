@@ -1,242 +1,269 @@
-// server/routes/game.js
-import express from "express";
-import { q } from "../lib/db.js";
-import { verifyInitData, parseUser } from "../lib/verifyInitData.js";
-import fetch from "node-fetch";
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>RicoBet Mascot Clicker</title>
 
-export const game = express.Router();
-
-// ---- Config ----
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const SHORT_NAME = process.env.TELEGRAM_GAME_SHORT_NAME;
-
-// ---- Auth: verify Telegram WebApp initData ----
-function auth(req, res, next) {
-  const initData = req.get("x-telegram-init") || req.query.initData || req.body?.initData;
-  if (!initData || !verifyInitData(initData, BOT_TOKEN)) {
-    return res.status(401).json({ ok: false, error: "INVALID_INITDATA" });
-  }
-  req.tgUser = parseUser(initData);
-  return next();
-}
-
-// ---- Helpers ----
-async function applyTick(state) {
-  const last = new Date(state.last_tick).getTime();
-  const now = Date.now();
-  const dt = (now - last) / 1000;
-  if (dt > 0) {
-    state.energy = Math.min(
-      state.cap,
-      Number(state.energy) + Number(state.regen_per_sec) * dt
-    );
-    state.last_tick = new Date(now).toISOString();
-  }
-  return state;
-}
-
-async function getOrCreatePlayer(tg) {
-  const u = await q("select * from players where tg_user_id=$1", [tg.id]);
-  if (u.rowCount) return u.rows[0];
-
-  const ins = await q(
-    "insert into players (tg_user_id, username, first_name, last_name, photo_url) values ($1,$2,$3,$4,$5) returning *",
-    [tg.id, tg.username, tg.first_name, tg.last_name, tg.photo_url]
-  );
-  const player = ins.rows[0];
-  await q("insert into game_state (player_id) values ($1)", [player.id]);
-  return player;
-}
-
-async function getState(playerId) {
-  const r = await q("select * from game_state where player_id=$1", [playerId]);
-  return r.rows[0];
-}
-
-async function saveState(playerId, s) {
-  const sql = `
-    update game_state
-       set tokens=$1, level=$2, tap_power=$3, energy=$4, cap=$5,
-           regen_per_sec=$6, shirt_idx=$7, theme=$8, city=$9, last_tick=$10, last_daily_bonus=$11
-     where player_id=$12
-  `;
-  await q(sql, [
-    s.tokens,
-    s.level,
-    s.tap_power,
-    s.energy,
-    s.cap,
-    s.regen_per_sec,
-    s.shirt_idx,
-    s.theme,
-    s.city,
-    s.last_tick,
-    s.last_daily_bonus || null,
-    playerId,
-  ]);
-}
-
-// ---- Routes ----
-
-// GET profile/state
-game.get("/state", auth, async (req, res) => {
-  const player = await getOrCreatePlayer(req.tgUser);
-  let st = await getState(player.id);
-  st = await applyTick(st);
-  await saveState(player.id, st);
-  res.json({ ok: true, player: { id: player.id, tg: req.tgUser }, state: st });
-});
-
-// POST tap (spends 1 energy per tap)
-game.post("/tap", auth, express.json(), async (req, res) => {
-  const n = Math.max(1, Math.min(50, Number(req.body?.taps || 1)));
-  const player = await getOrCreatePlayer(req.tgUser);
-  let st = await getState(player.id);
-  st = await applyTick(st);
-
-  const cost = n;
-  if (Number(st.energy) < cost) {
-    return res.json({ ok: false, error: "NO_ENERGY", energy: st.energy });
+<style>
+  :root {
+    --bg1: #0a0718;
+    --bg2: #100e25;
+    --ink: #eef4ff;
+    --muted: #9fa9d8;
+    --accent: #ff6ec4;
+    --accent2: #7873f5;
   }
 
-  st.energy = Number(st.energy) - cost;
-  st.tokens = Number(st.tokens) + n * Number(st.tap_power);
-
-  // simple leveling rule: new level when tokens >= 500 * level
-  const target = st.level * 500;
-  if (Number(st.tokens) >= target) st.level += 1;
-
-  await saveState(player.id, st);
-  res.json({ ok: true, state: st });
-});
-
-// POST buy upgrade
-// body: { kind: 'tap'|'cap'|'regen'|'shirt'|'bg' }
-const prices = { tap: 50, cap: 80, regen: 120, shirt: 30, bg: 60 };
-
-game.post("/buy", auth, express.json(), async (req, res) => {
-  const kind = req.body?.kind;
-  if (!prices[kind]) return res.status(400).json({ ok: false, error: "BAD_KIND" });
-
-  const player = await getOrCreatePlayer(req.tgUser);
-  let st = await getState(player.id);
-  st = await applyTick(st);
-
-  const cost = prices[kind];
-  if (Number(st.tokens) < cost) {
-    return res.json({ ok: false, error: "NOT_ENOUGH_TOKENS" });
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(circle at top, var(--bg2), var(--bg1));
+    color: var(--ink);
+    overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
   }
 
-  st.tokens = Number(st.tokens) - cost;
-
-  if (kind === "tap") st.tap_power += 1;
-  if (kind === "cap") st.cap += 50;
-  if (kind === "regen") st.regen_per_sec = Math.min(10, Number(st.regen_per_sec) + 0.5);
-  if (kind === "shirt") st.shirt_idx = (st.shirt_idx + 1) % 5;
-  if (kind === "bg")
-    st.theme = st.theme === "day" ? "night" : st.theme === "night" ? "auto" : "day";
-
-  await q("insert into tx_log (player_id, kind, tokens_delta) values ($1,$2,$3)", [
-    player.id,
-    kind,
-    -cost,
-  ]);
-  await saveState(player.id, st);
-
-  res.json({ ok: true, state: st });
-});
-
-// POST daily bonus (once per UTC day)
-game.post("/daily", auth, express.json(), async (req, res) => {
-  const player = await getOrCreatePlayer(req.tgUser);
-  let st = await getState(player.id);
-  st = await applyTick(st);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const last = st.last_daily_bonus
-    ? new Date(st.last_daily_bonus).toISOString().slice(0, 10)
-    : null;
-
-  if (last === today) return res.json({ ok: false, error: "ALREADY_CLAIMED" });
-
-  const reward = 100;
-  st.tokens = Number(st.tokens) + reward;
-  st.last_daily_bonus = today;
-
-  await q(
-    "insert into tx_log (player_id, kind, tokens_delta, amount) values ($1,$2,$3,$4)",
-    [player.id, "bonus", reward, reward]
-  );
-  await saveState(player.id, st);
-
-  res.json({ ok: true, reward, state: st });
-});
-
-// POST build city
-// body: { building: 'house'|'shop'|'tower' }
-const buildingCosts = { house: 150, shop: 400, tower: 1200 };
-
-game.post("/build", auth, express.json(), async (req, res) => {
-  const b = req.body?.building;
-  if (!buildingCosts[b]) return res.status(400).json({ ok: false, error: "BAD_BUILDING" });
-
-  const player = await getOrCreatePlayer(req.tgUser);
-  let st = await getState(player.id);
-  st = await applyTick(st);
-
-  const cost = buildingCosts[b];
-  if (Number(st.tokens) < cost) {
-    return res.json({ ok: false, error: "NOT_ENOUGH_TOKENS" });
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.25rem;
+    background: linear-gradient(to right, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
-  st.tokens = Number(st.tokens) - cost;
-  const city = st.city || { buildings: [], population: 0 };
-  city.buildings.push({ type: b, at: new Date().toISOString() });
-  city.population = (city.population || 0) + (b === "house" ? 3 : b === "shop" ? 6 : 12);
-  st.city = city;
+  #tokenBox {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+  }
 
-  await q(
-    "insert into tx_log (player_id, kind, tokens_delta, meta) values ($1,$2,$3,$4)",
-    [player.id, "build", -cost, { building: b }]
-  );
-  await saveState(player.id, st);
+  #tokenCount {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #ffd86a;
+  }
 
-  res.json({ ok: true, state: st });
-});
+  #mascot {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 30%, #ffd86a 0%, #e1a100 80%);
+    display: flex;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 0 25px rgba(255, 200, 100, .4);
+    transition: transform .15s ease;
+  }
 
-// ---- Telegram score / leaderboard (optional) ----
-async function callBot(method, body) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  #mascot:active {
+    transform: scale(.9);
+  }
+
+  #energyBar {
+    width: 200px;
+    height: 14px;
+    border: 1px solid #7873f5;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 12px auto;
+  }
+
+  #energyFill {
+    height: 100%;
+    width: 50%;
+    background: linear-gradient(to right, #ff6ec4, #7873f5);
+    transition: width 0.4s linear;
+  }
+
+  .btn {
+    display: inline-block;
+    background: linear-gradient(to right, var(--accent), var(--accent2));
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    margin: 6px;
+    cursor: pointer;
+  }
+
+  .btn:active { opacity: 0.7; }
+
+  dialog {
+    background: #161628;
+    border: 1px solid #282844;
+    border-radius: 10px;
+    color: white;
+    padding: 16px;
+    max-width: 300px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 18px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.7);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    animation: fadeinout 2s;
+  }
+
+  @keyframes fadeinout {
+    0% { opacity: 0; transform: translate(-50%,20px);}
+    10%,90% { opacity: 1; transform: translate(-50%,0);}
+    100% { opacity: 0; transform: translate(-50%,20px);}
+  }
+</style>
+</head>
+<body>
+
+<h1>🐱 RicoBet Mascot Clicker</h1>
+<div id="tokenBox">
+  <div id="tokenCount">0</div>
+  <div style="font-size:14px;color:var(--muted);">RicoBet Tokens</div>
+</div>
+
+<div id="energyBar"><div id="energyFill"></div></div>
+
+<div id="mascot">💰</div>
+
+<div>
+  <button class="btn" id="btnShop">Shop</button>
+  <button class="btn" id="btnDaily">Daily</button>
+  <button class="btn" id="btnCity">City</button>
+</div>
+
+<dialog id="dlgShop">
+  <h3>Shop</h3>
+  <p><button class="btn" data-buy="tap">Upgrade Tap (+1 Power) — 50</button></p>
+  <p><button class="btn" data-buy="cap">Increase Energy Cap — 80</button></p>
+  <p><button class="btn" data-buy="regen">Regen Speed +0.5 — 120</button></p>
+  <p><button class="btn" data-buy="shirt">New Shirt — 30</button></p>
+  <p><button class="btn" data-buy="bg">Change Theme — 60</button></p>
+  <p><button data-close class="btn">Close</button></p>
+</dialog>
+
+<dialog id="dlgCity">
+  <h3>Your City</h3>
+  <div id="cityList"></div>
+  <p><button class="btn" data-build="house">🏠 Build House — 150</button></p>
+  <p><button class="btn" data-build="shop">🏬 Build Shop — 400</button></p>
+  <p><button class="btn" data-build="tower">🏯 Build Tower — 1200</button></p>
+  <p><button data-close class="btn">Close</button></p>
+</dialog>
+
+<script>
+// ------------- CONFIG -------------
+window.API_BASE = ''; // same-origin (since Render serves both backend+frontend)
+
+// Telegram WebApp init
+if (window.Telegram && Telegram.WebApp) {
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+}
+
+const $ = (s)=>document.querySelector(s);
+const tokenCount = $('#tokenCount');
+const eFill = $('#energyFill');
+const btnShop = $('#btnShop');
+const btnDaily = $('#btnDaily');
+const btnCity = $('#btnCity');
+const dlgShop = $('#dlgShop');
+const dlgCity = $('#dlgCity');
+
+let STATE = {
+  tokens: 0, energy: 100, cap: 100, level: 1, tap_power: 1,
+  regen_per_sec: 1, last_tick: new Date().toISOString()
+};
+
+async function API(path, opt={}) {
+  const base = window.API_BASE || '';
+  const res = await fetch(base+path, {
+    ...opt,
+    headers: {
+      ...(opt.headers||{}),
+      'x-telegram-init': (window.Telegram?.WebApp?.initData || '')
+    }
   });
-  return r.json();
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
 }
 
-game.post("/set-score", auth, express.json(), async (req, res) => {
-  const score = Math.max(0, Math.floor(req.body?.score || 0));
-  const payload = {
-    user_id: req.tgUser.id,
-    score,
-    force: true,
-    disable_edit_message: false,
-  };
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+}
 
-  if (req.body.inline_message_id) {
-    payload.inline_message_id = req.body.inline_message_id;
-  } else {
-    payload.chat_id = req.body.chat_id;
-    payload.message_id = req.body.message_id;
-  }
+function render() {
+  tokenCount.textContent = Math.floor(STATE.tokens).toLocaleString();
+  const pct = Math.min(1, STATE.energy/STATE.cap);
+  eFill.style.width = (pct*100).toFixed(1)+'%';
+}
 
+async function loadState() {
   try {
-    const r = await callBot("setGameScore", payload);
-    res.json(r);
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
+    const r = await API('/api/state');
+    if(r.ok){ STATE = r.state; render(); }
+  } catch(e) { console.error(e); }
+}
+
+$('#mascot').addEventListener('click', async ()=>{
+  try {
+    const r = await API('/api/tap', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({taps:1})
+    });
+    if(r.ok){ STATE = r.state; render(); }
+    else showToast(r.error || 'No energy');
+  } catch(e){ showToast('Error'); }
 });
 
-export default game;
+// Shop
+btnShop.onclick = ()=>dlgShop.showModal();
+dlgShop.addEventListener('click', async (e)=>{
+  if(e.target.matches('[data-close]')) return dlgShop.close();
+  const kind = e.target.getAttribute('data-buy');
+  if(!kind) return;
+  const r = await API('/api/buy', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({kind})
+  });
+  if(r.ok){ STATE = r.state; render(); showToast('Purchased '+kind); }
+  else showToast(r.error);
+});
+
+// Daily
+btnDaily.onclick = async ()=>{
+  const r = await API('/api/daily',{method:'POST'});
+  if(r.ok){ STATE = r.state; render(); showToast('Daily +'+r.reward); }
+  else showToast(r.error);
+};
+
+// City
+btnCity.onclick = ()=>dlgCity.showModal();
+dlgCity.addEventListener('click', async (e)=>{
+  if(e.target.matches('[data-close]')) return dlgCity.close();
+  const b = e.target.getAttribute('data-build');
+  if(!b) return;
+  const r = await API('/api/build', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({building:b})
+  });
+  if(r.ok){ STATE = r.state; render(); showToast('Built '+b); }
+  else showToast(r.error);
+});
+
+loadState();
+</script>
+</body>
+</html>
