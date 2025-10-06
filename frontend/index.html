@@ -7,33 +7,45 @@
 
 <style>
   :root {
-    --bg1: #0a0718;
-    --bg2: #100e25;
     --ink: #eef4ff;
     --muted: #9fa9d8;
     --accent: #ff6ec4;
     --accent2: #7873f5;
   }
 
+  /* Background image */
   html, body {
-  height:100%;
-  margin:0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color:#eef4ff;
-  background: #0b0b16 url("https://ricobr.ft-crm.com/media-api/serve/a02f364f-bea1-4a99-ae4c-211994eced91_2.png") center/cover no-repeat fixed;
-}
+    height:100%;
+    margin:0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: var(--ink);
+    background: #0b0b16 url("https://ricobr.ft-crm.com/media-api/serve/a02f364f-bea1-4a99-ae4c-211994eced91_2.png") center/cover no-repeat fixed;
+  }
+  body::before {
+    content:"";
+    position:fixed; inset:0;
+    background: radial-gradient(transparent, rgba(0,0,0,.35));
+    pointer-events:none;
+  }
 
-/* Optional dark overlay for contrast */
-body::before {
-  content:"";
-  position:fixed; inset:0;
-  background: radial-gradient(transparent, rgba(0,0,0,.35));
-  pointer-events:none;
-}
+  /* Centered app wrapper */
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 
   h1 {
+    width: 100%;
     font-size: 1.8rem;
-    margin-bottom: 0.25rem;
+    margin: 0 0 10px;
+    text-align: left;
     background: linear-gradient(to right, var(--accent), var(--accent2));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -42,46 +54,47 @@ body::before {
   #tokenBox {
     display: flex; flex-direction: column; align-items: center;
     gap: 4px;
+    margin-top: 4px;
   }
-
   #tokenCount {
     font-size: 2.2rem;
     font-weight: 700;
     color: #ffd86a;
   }
 
-  #mascot {
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 30%, #ffd86a 0%, #e1a100 80%);
-    display: flex;
-    align-items: center; justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 0 25px rgba(255, 200, 100, .4);
-    transition: transform .15s ease;
-  }
-
-  #mascot:active {
-    transform: scale(.9);
-  }
-
   #energyBar {
-    width: 200px;
+    width: 240px;
     height: 14px;
     border: 1px solid #7873f5;
     border-radius: 6px;
     overflow: hidden;
-    margin: 12px auto;
+    margin: 12px auto 18px;
   }
-
   #energyFill {
     height: 100%;
-    width: 50%;
+    width: 0%;
     background: linear-gradient(to right, #ff6ec4, #7873f5);
-    transition: width 0.4s linear;
+    transition: width 0.25s linear;
   }
 
+  /* Clean mascot: no background circle */
+  #mascot {
+    margin: 6px auto 12px;
+    display: flex;
+    align-items: center; justify-content: center;
+    width: 180px; height: 180px;
+    background: none; border: none; box-shadow: none;
+    cursor: pointer;
+  }
+  #mascot img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    user-select: none; pointer-events: none;
+    transition: transform .08s ease;
+  }
+  #mascot:active img { transform: scale(.92); }
+
+  .buttons { margin-top: 6px; }
   .btn {
     display: inline-block;
     background: linear-gradient(to right, var(--accent), var(--accent2));
@@ -90,11 +103,10 @@ body::before {
     padding: 10px 18px;
     border-radius: 8px;
     font-weight: 600;
-    margin: 6px;
+    margin: 6px 6px 0;
     cursor: pointer;
   }
-
-  .btn:active { opacity: 0.7; }
+  .btn:active { opacity: .7; }
 
   dialog {
     background: #161628;
@@ -102,21 +114,21 @@ body::before {
     border-radius: 10px;
     color: white;
     padding: 16px;
-    max-width: 300px;
+    max-width: 320px;
   }
 
   .toast {
     position: fixed;
     bottom: 18px; left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,.7);
+    background: rgba(0,0,0,.75);
     color: #fff;
     padding: 10px 16px;
     border-radius: 20px;
     font-size: 14px;
+    z-index: 2;
     animation: fadeinout 2s;
   }
-
   @keyframes fadeinout {
     0% { opacity: 0; transform: translate(-50%,20px);}
     10%,90% { opacity: 1; transform: translate(-50%,0);}
@@ -126,28 +138,31 @@ body::before {
 </head>
 <body>
 
-<h1>🐱 RicoBet Mascot Clicker</h1>
-<div id="tokenBox">
-  <div id="tokenCount">0</div>
-  <div style="font-size:14px;color:var(--muted);">RicoBet Tokens</div>
+<div class="app">
+  <h1>🐱 RicoBet Mascot Clicker</h1>
+
+  <div id="tokenBox">
+    <div id="tokenCount">0</div>
+    <div style="font-size:14px;color:var(--muted);">RicoBet Tokens</div>
+  </div>
+
+  <div id="energyBar"><div id="energyFill"></div></div>
+
+  <div id="mascot">
+    <img
+      src="https://ricomx.ft-crm.com/media-api/serve/f457a1cb-76e8-4d4b-9bdc-01a29951a976_full"
+      alt="Rico Mascot"
+    />
+  </div>
+
+  <div class="buttons">
+    <button class="btn" id="btnShop">Shop</button>
+    <button class="btn" id="btnDaily">Daily</button>
+    <button class="btn" id="btnCity">City</button>
+  </div>
 </div>
 
-<div id="energyBar"><div id="energyFill"></div></div>
-
-<div id="mascot">
-  <img
-    src="https://ricomx.ft-crm.com/media-api/serve/f457a1cb-76e8-4d4b-9bdc-01a29951a976_full"
-    alt="Rico Mascot"
-    style="width:160px; height:160px; object-fit:contain; background:none; border:none;"
-  />
-</div>
-
-<div>
-  <button class="btn" id="btnShop">Shop</button>
-  <button class="btn" id="btnDaily">Daily</button>
-  <button class="btn" id="btnCity">City</button>
-</div>
-
+<!-- Dialogs -->
 <dialog id="dlgShop">
   <h3>Shop</h3>
   <p><button class="btn" data-buy="tap">Upgrade Tap (+1 Power) — 50</button></p>
@@ -168,10 +183,10 @@ body::before {
 </dialog>
 
 <script>
-// ------------- CONFIG -------------
-window.API_BASE = ''; // same-origin (since Render serves both backend+frontend)
+/* ---------------- CONFIG ---------------- */
+window.API_BASE = ''; // same-origin (served by Render)
 
-// Telegram WebApp init
+/* Telegram WebApp init */
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
   Telegram.WebApp.expand();
