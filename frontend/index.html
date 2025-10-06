@@ -53,8 +53,7 @@
 
   #tokenBox {
     display: flex; flex-direction: column; align-items: center;
-    gap: 4px;
-    margin-top: 4px;
+    gap: 4px; margin-top: 4px;
   }
   #tokenCount {
     font-size: 2.2rem;
@@ -63,16 +62,13 @@
   }
 
   #energyBar {
-    width: 240px;
-    height: 14px;
+    width: 240px; height: 14px;
     border: 1px solid #7873f5;
-    border-radius: 6px;
-    overflow: hidden;
+    border-radius: 6px; overflow: hidden;
     margin: 12px auto 18px;
   }
   #energyFill {
-    height: 100%;
-    width: 0%;
+    height: 100%; width: 0%;
     background: linear-gradient(to right, #ff6ec4, #7873f5);
     transition: width 0.25s linear;
   }
@@ -80,8 +76,7 @@
   /* Clean mascot: no background circle */
   #mascot {
     margin: 6px auto 12px;
-    display: flex;
-    align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     width: 180px; height: 180px;
     background: none; border: none; box-shadow: none;
     cursor: pointer;
@@ -98,36 +93,24 @@
   .btn {
     display: inline-block;
     background: linear-gradient(to right, var(--accent), var(--accent2));
-    color: white;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-weight: 600;
-    margin: 6px 6px 0;
-    cursor: pointer;
+    color: white; border: none;
+    padding: 10px 18px; border-radius: 8px;
+    font-weight: 600; margin: 6px 6px 0; cursor: pointer;
   }
   .btn:active { opacity: .7; }
 
   dialog {
-    background: #161628;
-    border: 1px solid #282844;
-    border-radius: 10px;
-    color: white;
-    padding: 16px;
-    max-width: 320px;
+    background: #161628; color: white;
+    border: 1px solid #282844; border-radius: 10px;
+    padding: 16px; max-width: 320px;
   }
 
   .toast {
-    position: fixed;
-    bottom: 18px; left: 50%;
+    position: fixed; bottom: 18px; left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,.75);
-    color: #fff;
-    padding: 10px 16px;
-    border-radius: 20px;
-    font-size: 14px;
-    z-index: 2;
-    animation: fadeinout 2s;
+    background: rgba(0,0,0,.75); color: #fff;
+    padding: 10px 16px; border-radius: 20px;
+    font-size: 14px; z-index: 2; animation: fadeinout 2s;
   }
   @keyframes fadeinout {
     0% { opacity: 0; transform: translate(-50%,20px);}
@@ -162,7 +145,7 @@
   </div>
 </div>
 
-<!-- Dialogs -->
+<!-- Shop dialog -->
 <dialog id="dlgShop">
   <h3>Shop</h3>
   <p><button class="btn" data-buy="tap">Upgrade Tap (+1 Power) — 50</button></p>
@@ -173,13 +156,21 @@
   <p><button data-close class="btn">Close</button></p>
 </dialog>
 
+<!-- City dialog -->
 <dialog id="dlgCity">
   <h3>Your City</h3>
-  <div id="cityList"></div>
-  <p><button class="btn" data-build="house">🏠 Build House — 150</button></p>
-  <p><button class="btn" data-build="shop">🏬 Build Shop — 400</button></p>
-  <p><button class="btn" data-build="tower">🏯 Build Tower — 1200</button></p>
-  <p><button data-close class="btn">Close</button></p>
+  <div id="cityStats" style="margin:4px 0 10px;color:#9fa9d8;font-size:14px;">
+    Population: <b id="cityPop">0</b> • Buildings: <b id="cityCount">0</b>
+  </div>
+  <div id="cityList" style="max-height:220px;overflow:auto;"></div>
+
+  <div style="margin-top:12px">
+    <button class="btn" data-build="house">🏠 Build House — 150</button>
+    <button class="btn" data-build="shop">🏬 Build Shop — 400</button>
+    <button class="btn" data-build="tower">🏯 Build Tower — 1200</button>
+  </div>
+
+  <p><button data-close class="btn" style="margin-top:10px">Close</button></p>
 </dialog>
 
 <script>
@@ -233,6 +224,32 @@ function render() {
   eFill.style.width = (pct*100).toFixed(1)+'%';
 }
 
+/* ---- City rendering ---- */
+function renderCity(city){
+  const box = document.querySelector('#cityList');
+  const pop = document.querySelector('#cityPop');
+  const cnt = document.querySelector('#cityCount');
+  box.innerHTML = '';
+
+  if(!city || !Array.isArray(city.buildings) || city.buildings.length === 0){
+    box.innerHTML = '<div style="opacity:.8">No buildings yet. Start with a House!</div>';
+    pop.textContent = 0; cnt.textContent = 0;
+    return;
+  }
+
+  pop.textContent = city.population || 0;
+  cnt.textContent = city.buildings.length;
+
+  const items = city.buildings.slice().reverse().map(b=>{
+    const d = new Date(b.at).toLocaleString();
+    return `<div style="padding:8px 10px;border:1px solid #282844;border-radius:8px;margin:6px 0;">
+      <b>${b.type}</b> <span style="color:#9fa9d8">• ${d}</span>
+    </div>`;
+  }).join('');
+  box.innerHTML = items;
+}
+
+/* ---- Initial state ---- */
 async function loadState() {
   try {
     const r = await API('/api/state');
@@ -240,7 +257,8 @@ async function loadState() {
   } catch(e) { console.error(e); }
 }
 
-$('#mascot').addEventListener('click', async ()=>{
+/* ---- Interactions ---- */
+document.getElementById('mascot').addEventListener('click', async ()=>{
   try {
     const r = await API('/api/tap', {
       method:'POST',
@@ -252,7 +270,6 @@ $('#mascot').addEventListener('click', async ()=>{
   } catch(e){ showToast('Error'); }
 });
 
-// Shop
 btnShop.onclick = ()=>dlgShop.showModal();
 dlgShop.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) return dlgShop.close();
@@ -267,26 +284,36 @@ dlgShop.addEventListener('click', async (e)=>{
   else showToast(r.error);
 });
 
-// Daily
 btnDaily.onclick = async ()=>{
   const r = await API('/api/daily',{method:'POST'});
   if(r.ok){ STATE = r.state; render(); showToast('Daily +'+r.reward); }
   else showToast(r.error);
 };
 
-// City
-btnCity.onclick = ()=>dlgCity.showModal();
+btnCity.onclick = ()=>{
+  renderCity(STATE.city);
+  dlgCity.showModal();
+};
 dlgCity.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) return dlgCity.close();
-  const b = e.target.getAttribute('data-build');
-  if(!b) return;
-  const r = await API('/api/build', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({building:b})
-  });
-  if(r.ok){ STATE = r.state; render(); showToast('Built '+b); }
-  else showToast(r.error);
+  const b = e.target.getAttribute('data-build'); if(!b) return;
+  try {
+    const r = await API('/api/build', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ building:b })
+    });
+    if(r.ok){
+      STATE = r.state;
+      render();
+      renderCity(STATE.city);
+      showToast('Built '+b);
+    } else {
+      showToast(r.error || 'Build failed');
+    }
+  } catch(err){
+    showToast('Error');
+  }
 });
 
 loadState();
