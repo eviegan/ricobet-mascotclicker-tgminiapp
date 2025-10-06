@@ -1,136 +1,63 @@
 // server/server.js
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import fetch from "node-fetch";
 
-import { game } from "./routes/game.js";
-import { pool } from "./lib/db.js";
+// 1) Ensure DB tables exist on startup (runs initTables in db.js)
+import "./lib/db.js";
 
-dotenv.config();
+// 2) API routes
+import game from "./routes/game.js";
+
 const app = express();
+app.set("trust proxy", 1);
 
-// ---------- Env ----------
-const BOT_TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
-const SHORT_NAME  = process.env.TELEGRAM_GAME_SHORT_NAME; // e.g. ricobetmascotclicker
-// You can point this to either Vercel OR your Render domain (since we serve frontend too)
-const FRONTEND    = process.env.FRONTEND_URL || "";       // e.g. https://ricobet-...vercel.app
-const origins     = (process.env.CORS_ORIGINS || "")
+// 3) CORS (comma-separated list in env, e.g. "https://your.vercel.app,https://t.me")
+const allowList = (process.env.CORS_ORIGINS || "")
   .split(",")
-  .map(s => s.trim())
+  .map((s) => s.trim())
   .filter(Boolean);
 
-// ---------- CORS ----------
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow same-origin or preflight with no origin
-      if (!origin || origins.includes(origin)) return cb(null, true);
-      // also allow our own Render host implicitly
-      if (process.env.RENDER_EXTERNAL_URL && origin?.startsWith(`https://${process.env.RENDER_EXTERNAL_URL}`))
-        return cb(null, true);
-      return cb(null, false);
+      if (!origin) return cb(null, true); // allow mobile apps / curl
+      if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
 );
 
-// ---------- Body parser for JSON (webhook & APIs) ----------
+// 4) JSON parsing
 app.use(express.json());
 
-// ---------- Serve Frontend (from /frontend) ----------
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FRONTEND_DIR = path.join(__dirname, "../frontend");
-app.use(express.static(FRONTEND_DIR));
+// 5) Health check
+app.get("/healthz", (req, res) => res.send("ok"));
 
-// Root → serve the game page
-app.get("/", (_req, res) => {
-  res.sendFile(path.join(FRONTEND_DIR, "index.html"));
+// 6) Telegram webhook (ACK only for now)
+app.post("/tg/webhook", (req, res) => {
+  // You can inspect req.body here if you want to react to updates.
+  res.json({ ok: true });
 });
 
-// ---------- Health ----------
-app.get("/health", async (_req, res) => {
-  try {
-    await pool.query("select 1");
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-// ---------- Game API ----------
+// 7) Mount game API
 app.use("/api", game);
 
-// ---------- Telegram helpers ----------
-async function tg(method, body) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return r.json();
-}
+// 8) Serve frontend
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const FRONTEND_DIR = path.join(__dirname, "../frontend");
 
-// ---------- Telegram webhook ----------
-app.post("/tg/webhook", async (req, res) => {
-  try {
-    const update = req.body;
+app.use(express.static(FRONTEND_DIR));
+app.get("/", (req, res) => res.sendFile(path.join(FRONTEND_DIR, "index.html")));
 
-    // 1) /start or /play → send the Game message
-    if (update.message && typeof update.message.text === "string") {
-      const text = update.message.text.trim();
-      if (/^\/(start|play)/i.test(text)) {
-        await tg("sendGame", {
-          chat_id: update.message.chat.id,
-          game_short_name: SHORT_NAME,
-        });
-        res.sendStatus(200);
-        return;
-      }
-    }
+// SPA fallback: any unknown route -> index.html
+app.get("*", (req, res) => res.sendFile(path.join(FRONTEND_DIR, "index.html")));
 
-    // 2) User tapped "Play" on the Game → callback_query with game_short_name
-    if (update.callback_query && update.callback_query.game_short_name === SHORT_NAME) {
-      const cq = update.callback_query;
-
-      // Build URL parameters so the web app can later call /api/set-score
-      const params = new URLSearchParams();
-      if (cq.message) {
-        params.set("chat_id", cq.message.chat.id);
-        params.set("message_id", cq.message.message_id);
-      }
-      if (cq.inline_message_id) {
-        params.set("inline_message_id", cq.inline_message_id);
-      }
-
-      // Decide where to open the game:
-      // - Prefer FRONTEND env if provided (e.g., Vercel)
-      // - Otherwise open the Render-served index.html at our own root
-      const base = FRONTEND || `https://${process.env.RENDER_EXTERNAL_URL || "localhost"}`;
-      const url = base + (base.includes("?") ? "&" : "?") + params.toString();
-
-      await tg("answerCallbackQuery", {
-        callback_query_id: cq.id,
-        url,
-      });
-
-      res.sendStatus(200);
-      return;
-    }
-
-    // Ignore other update types
-    res.sendStatus(200);
-  } catch (e) {
-    console.error("Webhook error:", e);
-    res.sendStatus(200); // Always 200 to Telegram
-  }
-});
-
-// ---------- Start ----------
-const PORT = process.env.PORT || 8080;
+// 9) Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server listening on", PORT);
+  console.log(`🚀 Server listening on ${PORT}`);
 });
