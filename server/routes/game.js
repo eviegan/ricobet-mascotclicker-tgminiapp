@@ -7,17 +7,36 @@ import fetch from "node-fetch";
 export const game = express.Router();
 
 // ---- Config ----
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_TOKEN  = process.env.TELEGRAM_BOT_TOKEN;
 const SHORT_NAME = process.env.TELEGRAM_GAME_SHORT_NAME;
 
-// ---- Auth: verify Telegram WebApp initData ----
+// ---- Auth: verify Telegram WebApp initData (with optional dev bypass) ----
 function auth(req, res, next) {
-  const initData = req.get("x-telegram-init") || req.query.initData || req.body?.initData;
-  if (!initData || !verifyInitData(initData, BOT_TOKEN)) {
+  const initData =
+    req.get("x-telegram-init") || req.query.initData || req.body?.initData;
+
+  // Dev-only: allow testing from normal browser when DEV_SKIP_AUTH=1
+  if (!initData && process.env.DEV_SKIP_AUTH === "1") {
+    req.tgUser = {
+      id: 100000001,
+      username: "DevUser",
+      first_name: "Dev",
+      last_name: "Mode",
+      photo_url: "",
+    };
+    return next();
+  }
+
+  try {
+    if (!initData || !verifyInitData(initData, BOT_TOKEN)) {
+      return res.status(401).json({ ok: false, error: "INVALID_INITDATA" });
+    }
+    req.tgUser = parseUser(initData);
+    return next();
+  } catch (e) {
+    console.error("Auth Error:", e);
     return res.status(401).json({ ok: false, error: "INVALID_INITDATA" });
   }
-  req.tgUser = parseUser(initData);
-  return next();
 }
 
 // ---- Helpers ----
@@ -102,6 +121,7 @@ game.post("/tap", auth, express.json(), async (req, res) => {
   st.energy = Number(st.energy) - cost;
   st.tokens = Number(st.tokens) + n * Number(st.tap_power);
 
+  // simple leveling rule: level up when tokens >= 500 * level
   const target = st.level * 500;
   if (Number(st.tokens) >= target) st.level += 1;
 
