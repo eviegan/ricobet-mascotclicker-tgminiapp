@@ -2,14 +2,17 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
+if (!process.env.DATABASE_URL) {
+  console.warn("⚠️ DATABASE_URL is not set. Render Postgres won't be reachable.");
+}
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }, // Render PG requires SSL
 });
 
 export async function q(text, params) {
-  const res = await pool.query(text, params);
-  return res;
+  return pool.query(text, params);
 }
 
 // --- Auto-create tables if missing ---
@@ -32,8 +35,8 @@ async function initTables() {
     level INTEGER DEFAULT 1,
     tap_power NUMERIC DEFAULT 1,
     energy NUMERIC DEFAULT 100,
-    cap NUMERIC DEFAULT 100,
-    regen_per_sec NUMERIC DEFAULT 1,
+    cap NUMERIC DEFAULT 500,                -- max energy = 500
+    regen_per_sec NUMERIC DEFAULT 0.125,    -- 1 energy every 8 seconds
     shirt_idx INTEGER DEFAULT 0,
     theme TEXT DEFAULT 'day',
     city JSONB DEFAULT '{}'::jsonb,
@@ -50,6 +53,11 @@ async function initTables() {
     meta JSONB,
     created_at TIMESTAMP DEFAULT NOW()
   );
+
+  -- Helpful indexes
+  CREATE INDEX IF NOT EXISTS idx_players_tg_user_id ON players(tg_user_id);
+  CREATE INDEX IF NOT EXISTS idx_game_state_player_id ON game_state(player_id);
+  CREATE INDEX IF NOT EXISTS idx_tx_log_player_id ON tx_log(player_id);
   `;
   try {
     await pool.query(sql);
@@ -58,6 +66,16 @@ async function initTables() {
     console.error("❌ Table init error:", err);
   }
 }
+
+// Optional: simple connectivity check
+(async () => {
+  try {
+    await pool.query("SELECT 1");
+    console.log("🔌 Postgres connected.");
+  } catch (err) {
+    console.error("❌ Postgres connection error:", err);
+  }
+})();
 
 // Run init on startup
 initTables();
